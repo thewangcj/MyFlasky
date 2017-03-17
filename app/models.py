@@ -159,6 +159,44 @@ class User(UserMixin,db.Model):
                 # 生成的用户重复，回滚
             except IntegrityError:
                 db.session.rollback()
+    # 添加测试数据
+    @staticmethod
+    def add_test_user():
+        from sqlalchemy.exc import IntegrityError
+        import forgery_py
+        admin = User(email=current_app.config['FLASKY_ADMIN'],
+                     username='admin',
+                     password='admin',
+                     confirmed=True,
+                     name='root',
+                     location=forgery_py.address.city(),
+                     about_me=forgery_py.lorem_ipsum.sentence(),
+                     member_since=forgery_py.date.date(True))
+        test = User(email='605518519@qq.com',
+                     username='test',
+                     password='test',
+                     confirmed=True,
+                     name='test',
+                     location=forgery_py.address.city(),
+                     about_me=forgery_py.lorem_ipsum.sentence(),
+                     member_since=forgery_py.date.date(True))
+
+        moderator = User(email='moderator@qq.com',
+                    username='moderaor',
+                    password='test',
+                    confirmed=True,
+                    name='moderator',
+                    location=forgery_py.address.city(),
+                    about_me=forgery_py.lorem_ipsum.sentence(),
+                    member_since=forgery_py.date.date(True))
+
+        db.session.add(admin)
+        db.session.add(test)
+        db.session.add(moderator)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
 
     # 更新数据库使得用户自己关注自己
     @staticmethod
@@ -175,6 +213,8 @@ class User(UserMixin,db.Model):
         if self.role is None:
             if self.email == current_app.config['FLASKY_ADMIN']:    # 判断是否是管理员
                 self.role = Role.query.filter_by(permissions=0xff).first()
+            if self.email == current_app.config['FLASKY_MODERATOR']:
+                self.role = Role.query.filter_by(permissions=0x0f).first()
             if self.role is None:
                 self.role = Role.query.filter_by(default=True).first()
         if self.email is not None and self.avatar_hash is None:
@@ -321,24 +361,41 @@ class User(UserMixin,db.Model):
         return '<User %r>' % self.username
 
 class Comment(db.Model):
-    __tablename__ = "comments"
-    id = db.Column(db.Integer,primary_key=True)
+    __tablename__ = 'comments'
+    id = db.Column(db.Integer, primary_key=True)
     body = db.Column(db.Text)
     body_html = db.Column(db.Text)
-    timestamp = db.Column(db.DateTime,index=True,default=datetime.utcnow)
-    disable = db.Column(db.Boolean) # 用于查禁不当言论
-    author_id = db.Column(db.Integer,db.ForeignKey('users.id'))
-    post_id = db.Column(db.Integer,db.ForeignKey('posts.id'))
+    timestamp = db.Column(db.DateTime, index=True, default=datetime.utcnow)
+    disabled = db.Column(db.Boolean)
+    author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    post_id = db.Column(db.Integer, db.ForeignKey('posts.id'))
 
     @staticmethod
-    def on_changed_body(target,value,oldvalue,initiator):
-        allowed_tags = ['a','abbr','acronym','b','code','em','i','strong']  # 允许使用的标签
+    def on_changed_body(target, value, oldvalue, initiator):
+        allowed_tags = ['a', 'abbr', 'acronym', 'b', 'code', 'em', 'i',
+                        'strong']
         target.body_html = bleach.linkify(bleach.clean(
-            markdown(value,output_format='html'),
-            tags=allowed_tags,strip=True
-        ))
+            markdown(value, output_format='html'),
+            tags=allowed_tags, strip=True))
 
-db.event.listen(Comment.body,'set',Comment.on_changed_body)
+    @staticmethod
+    def generate_fake(count=100):
+        from random import seed, randint
+        import forgery_py
+
+        seed()
+        user_count = User.query.count()
+        for i in range(count):
+            u = User.query.offset(randint(0, user_count - 1)).first()
+            p = Post.query.offset(randint(0, user_count - 1)).first()
+            comment = Comment(body=forgery_py.lorem_ipsum.sentences(randint(1, 5)),
+                              timestamp=forgery_py.date.date(True),
+                              author=u,
+                              post=p)
+            db.session.add(comment)
+            db.session.commit()
+
+db.event.listen(Comment.body, 'set', Comment.on_changed_body)
 
 # 匿名用户，用户未登录时 current_user 的值，这样用户未登录的时候也可以调用 can 和 is_administrator
 class AnonymousUser(AnonymousUserMixin):

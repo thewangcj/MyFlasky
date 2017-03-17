@@ -14,6 +14,7 @@ class Config:
     FLASKY_MAIL_SUBJECT_PREFIX = '[Flasky]' #邮件前缀配置
     FLASKY_MAIL_SENDER = '15243686281@163.com'
     FLASKY_ADMIN = os.environ.get('FLASKY_ADMIN') or '15243686281@163.com'   #管理员邮件地址，用于判断是否是管理员
+    FLASKY_MODERATOR = 'moderator@qq.com'
     FLASKY_POSTS_PER_PAGE = 15  #每一页显示的文章数量
     FLASKY_FOLLOWERS_PER_PAGE = 10  #每一页显示的关注者数量
     FLASKY_COMMENTS_PER_PAGE = 10   #枚一页显示的评论

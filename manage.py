@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-#用于启动程序
+# 用于启动程序
 import os
 from app import create_app, db
-from app.models import User, Role,Post,Comment
+from app.models import User, Role, Post, Comment
 from flask_script import Manager, Shell
 from flask_migrate import Migrate, MigrateCommand
 
@@ -14,7 +14,7 @@ migrate = Migrate(app, db)
 def make_shell_context():
     # 为shell命令注册一个make_context回调函数
     # 该函数将shell自动导入数据库，程序，模型
-    return dict(app=app, db=db, User=User, Role=Role,Post=Post,Comment=Comment)
+    return dict(app=app, db=db, User=User, Role=Role, Post=Post, Comment=Comment)
 
 # 初始化 Flask-Script、 Flask-Migrate 和为 Python shell 定义的上下文
 manager.add_command("shell", Shell(make_context=make_shell_context))

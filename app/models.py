@@ -1,13 +1,15 @@
 from . import db
-from werkzeug.security import generate_password_hash,check_password_hash
-from flask_login import UserMixin,AnonymousUserMixin
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import UserMixin, AnonymousUserMixin
 from . import login_manager
 from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
-from flask import current_app,request
+from flask import current_app, request, url_for
 from datetime import datetime
 import hashlib
 import bleach
 from markdown import markdown
+from .exceptions import ValidationError
+
 
 class Permission:
     # 权限常亮
@@ -16,6 +18,7 @@ class Permission:
     WRITE_ARTICLES = 0x04   # 写文章
     MODERATE_COMMENTS = 0x08    # 管理评论
     ADMINISTER = 0x80   # 管理员
+
 
 class Role(db.Model):
     __tablename__ = 'roles'
@@ -58,14 +61,15 @@ class Role(db.Model):
     def __repr__(self):
         return '<Role %r>' % self.name
 
+
 class Post(db.Model):
     __tablename__ = 'posts'
-    id = db.Column(db.Integer,primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
     body = db.Column(db.Text)
-    timestamp = db.Column(db.DateTime,index=True,default=datetime.utcnow)
-    author_id = db.Column(db.Integer,db.ForeignKey('users.id'))
+    timestamp = db.Column(db.DateTime, index=True,default=datetime.utcnow)
+    author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     body_html = db.Column(db.Text)  # Markdown文本的HTML缓存
-    comments = db.relationship('Comment',backref='post',lazy='dynamic')
+    comments = db.relationship('Comment', backref='post', lazy='dynamic')
 
     # 生成虚拟文章
     @staticmethod
@@ -81,8 +85,10 @@ class Post(db.Model):
                      author=u)
             db.session.add(p)
             db.session.commit()
+
+
     # 处理Markdown文本
-    def on_changed_body(target,value,oldvalue,initiator):
+    def on_changed_body(target, value, oldvalue, initiator):
         allowed_tags = ['a', 'abbr', 'acronym', 'b', 'blockquote', 'code',
                         'em', 'i', 'li', 'ol', 'pre', 'strong', 'ul',
                         'h1', 'h2', 'h3', 'p']
@@ -90,12 +96,34 @@ class Post(db.Model):
         # markdown将Markdown 转为 HTML
         # clean 清除不允许的标签
         target.body_html = bleach.linkify(bleach.clean(
-            markdown(value,output_format='html'),
-            tags=allowed_tags,strip=True))
+            markdown(value, output_format='html'),
+            tags=allowed_tags, strip=True))
+
+
+    # 把文章转换成JSON格式的序列化字典
+    def to_json(self):
+        json_post={
+            'url': url_for('api.get_post', id=self.id, _external=True),
+            'body': self.body,
+            'body_html': self.body_html,
+            'timestamp': self.timestamp,
+            'author': url_for('api.get_user', id=self.author_id, _external=True),
+            'comments': url_for('apt.get_post_comments', id=self.id, _external=True),
+            'comment_count': self.comments.count()
+        }
+        return json_post
+
+    @staticmethod
+    def from_json(json_post):
+        body = json_post.get('body')
+        if body is None or body == '':
+            raise ValidationError('post does not have a body')
+        return Post(body=body)
 
 # on_changed_body 函数注册在 body 字段上，是 SQLAlchemy“ set”事件的监听程序，
 # 这意味着只要这个类实例的 body 字段设了新值，函数就会自动被调用
-db.event.listen(Post.body,'set',Post.on_changed_body)
+db.event.listen(Post.body, 'set', Post.on_changed_body)
+
 
 class Follow(db.Model):
     __tablename__ = 'follows'
@@ -105,6 +133,7 @@ class Follow(db.Model):
                             primary_key=True)
     timestamp = db.Column(db.DateTime,default=datetime.utcnow)  # 关注日期
 
+
 class User(UserMixin,db.Model):
     # FlaskLogin 提供了一个 UserMixin 类,实现了giant拓展要求的大部分函数
     __tablename__ = 'users'
@@ -113,28 +142,28 @@ class User(UserMixin,db.Model):
     username = db.Column(db.String(64), unique=True, index=True)
     password_hash = db.Column(db.String(128))
     role_id = db.Column(db.Integer, db.ForeignKey('roles.id'))  # 定义外键
-    confirmed = db.Column(db.Boolean,default=False) # 用户是否验证
+    confirmed = db.Column(db.Boolean, default=False)    # 用户是否验证
     name = db.Column(db.String(64))
-    location = db.Column(db.String(64)) # 所在地
-    about_me = db.Column(db.Text()) # 个人简介，Text类型不需要指定长度
-    member_since = db.Column(db.DateTime(),default=datetime.utcnow) # 注册时间，utcnow是一个函数
-    last_seen = db.Column(db.DateTime(),default=datetime.utcnow)    # 最后访问时间
-    avatar_hash = db.Column(db.String(32))  # 用户Gravatar头像hash值
-    posts = db.relationship('Post',backref='author',lazy='dynamic')
-    comments = db.relationship('Comment',backref='author',lazy='dynamic')
+    location = db.Column(db.String(64))     # 所在地
+    about_me = db.Column(db.Text())     # 个人简介，Text类型不需要指定长度
+    member_since = db.Column(db.DateTime(), default=datetime.utcnow)    # 注册时间，utcnow是一个函数
+    last_seen = db.Column(db.DateTime(), default=datetime.utcnow)    # 最后访问时间
+    avatar_hash = db.Column(db.String(32))      # 用户Gravatar头像hash值
+    posts = db.relationship('Post', backref='author', lazy='dynamic')
+    comments = db.relationship('Comment', backref='author', lazy='dynamic')
 
     # 使用两个一对多关系实现的多对多关系
     # 注意，为了消除外键间的歧义， 定义关系时必须使用可选参数 foreign_keys 指定的外键。
     # 而且，db.backref()参数并不是指定这两个关系之间的引用关系，而是回引 Follow 模型。
 
     # 关注的人
-    followed = db.relationship('Follow',foreign_keys=[Follow.follower_id],
-                               backref=db.backref('follower',lazy='joined'),
-                               lazy='dynamic',cascade='all,delete-orphan')
+    followed = db.relationship('Follow', foreign_keys=[Follow.follower_id],
+                               backref=db.backref('follower', lazy='joined'),
+                               lazy='dynamic', cascade='all,delete-orphan')
     # 关注该用户的用户
-    followers = db.relationship('Follow',foreign_keys=[Follow.followed_id],
-                               backref = db.backref('followed',lazy='joined'),
-                               lazy = 'dynamic',cascade='all,delete-orphan')
+    followers = db.relationship('Follow', foreign_keys=[Follow.followed_id],
+                                backref=db.backref('followed', lazy='joined'),
+                                lazy='dynamic', cascade='all,delete-orphan')
 
     # 生成虚拟用户
     @staticmethod
@@ -159,6 +188,7 @@ class User(UserMixin,db.Model):
                 # 生成的用户重复，回滚
             except IntegrityError:
                 db.session.rollback()
+
     # 添加测试数据
     @staticmethod
     def add_test_user():
@@ -247,14 +277,14 @@ class User(UserMixin,db.Model):
         return s.dumps({'confirm':self.id})
 
     # 验证注册令牌
-    def confirm(self,token):
+    def confirm(self, token):
         s = Serializer(current_app.config['SECRET_KEY'])
         try:
             #loads用于解码令牌，参数是令牌字符串，如果正确且没有过期则通过
             data=s.loads(token)
         except:
             return False
-        if data.get('confirm')!=self.id:
+        if data.get('confirm') != self.id:
             return  False
         self.confirmed = True   #验证通过
         db.session.add(self)    #在数据库中添加用户
@@ -318,7 +348,7 @@ class User(UserMixin,db.Model):
         db.session.add(self)
 
     # 生成用户邮箱对应的gravatar头像地址hash值，size 为图片大小，rating 表示图片级别，可选值有 "g"、 "pg"、 "r" 和 "x"，
-    def gravatar(self,size=100,default='identicon',rating='g'):
+    def gravatar(self, size=100, default='identicon', rating='g'):
         if request.is_secure:
             url = 'https://secure.gravatar.com/avatar'
         else:
@@ -329,24 +359,24 @@ class User(UserMixin,db.Model):
                 url=url, hash=hash, size=size, default=default, rating=rating)
 
     # 关注用户
-    def follow(self,user):
+    def follow(self, user):
         if not self.is_following(user):
-            f = Follow(follower=self,followed = user)
+            f = Follow(follower=self, followed=user)
             db.session.add(f)
 
     # 取消关注
-    def unfollow(self,user):
+    def unfollow(self, user):
         f = self.followed.filter_by(followed_id=user.id).first()
         if f:
             db.session.delete(f)
 
     # 是否关注某个用户
-    def is_following(self,user):
+    def is_following(self, user):
         return self.followed.filter_by(
             followed_id=user.id).first() is not None
 
     # 是否被某个用户关注
-    def is_followed_by(self,user):
+    def is_followed_by(self, user):
         return self.follower.filter_by(
             follower_id=user.id).first() is not None
 
@@ -357,8 +387,38 @@ class User(UserMixin,db.Model):
         return Post.query.join(Follow, Follow.followed_id == Post.author_id) \
             .filter(Follow.follower_id == self.id)
 
+    # 用于基于令牌的认证
+    def generate_auth_token(self, expiration):
+        s = Serializer(current_app.config['SECRET_KEY'],
+                       expires_in=expiration)
+        return s.dump({'id': self.id})
+
+    @staticmethod
+    def verify_auth_token(token):
+        s = Serializer(current_app.config['SECRET_KEY'])
+        try:
+            data = s.load(token)
+        except:
+            return None
+        return User.query.get(data['id'])
+
+    # 将用户转换为JSON字典
+    def to_json(self):
+        json_user = {
+            'url': url_for('api.get_user', id=self.id, _external=True),
+            'username': self.username,
+            'member_since': self.member_since,
+            'last_seen': self.last_seen,
+            'posts': url_for('api.get_user_posts', id=self.id, _external=True),
+            'followed_posts': url_for('api.get_user_followed_posts',
+                                      id=self.id, _external=True),
+            'post_count': self.posts.count()
+        }
+        return json_user
+
     def __repr__(self):
         return '<User %r>' % self.username
+
 
 class Comment(db.Model):
     __tablename__ = 'comments'
@@ -397,6 +457,7 @@ class Comment(db.Model):
 
 db.event.listen(Comment.body, 'set', Comment.on_changed_body)
 
+
 # 匿名用户，用户未登录时 current_user 的值，这样用户未登录的时候也可以调用 can 和 is_administrator
 class AnonymousUser(AnonymousUserMixin):
     def can(self,permissions):
@@ -407,6 +468,7 @@ class AnonymousUser(AnonymousUserMixin):
 
 # 设置程序的匿名用户
 login_manager.anonymous_user = AnonymousUser
+
 
 # Flask-Login 要求程序实现一个回调函数，使用指定的标识符加载用户
 @login_manager.user_loader

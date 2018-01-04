@@ -2,3 +2,4 @@
 .vscode
 data-dev.sqlite
 __pycache__
+migrations

@@ -86,7 +86,6 @@ class Post(db.Model):
             db.session.add(p)
             db.session.commit()
 
-
     # 处理Markdown文本
     def on_changed_body(target, value, oldvalue, initiator):
         allowed_tags = ['a', 'abbr', 'acronym', 'b', 'blockquote', 'code',
@@ -98,7 +97,6 @@ class Post(db.Model):
         target.body_html = bleach.linkify(bleach.clean(
             markdown(value, output_format='html'),
             tags=allowed_tags, strip=True))
-
 
     # 把文章转换成JSON格式的序列化字典
     def to_json(self):

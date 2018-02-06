@@ -30,7 +30,7 @@ class Role(db.Model):
     permissions = db.Column(db.Integer)
     # 定义关系，users 属性代表这个关系的面向对象视角。对于一个 Role 类的实例，其 users 属性将返回与角色相关联的用户组成的列表
     users = db.relationship('User',backref='role',lazy='dynamic')
-    # dynamic禁止执行自动查询
+    # dynamic 禁止执行自动查询
 
     # 将角色添加到数据库中
     @staticmethod

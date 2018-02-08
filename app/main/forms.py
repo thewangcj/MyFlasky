@@ -1,16 +1,16 @@
-from flask_wtf import FlaskForm
+from flask_wtf import Form
 from wtforms import StringField, TextAreaField, SubmitField, BooleanField, SelectField, ValidationError
 from wtforms.validators import DataRequired, Length, Email, Regexp
 from ..models import Role, User
 from flask_pagedown.fields import PageDownField
 
 
-class NameForm(FlaskForm):
+class NameForm(Form):
     name = StringField('What is your name?', validators=[DataRequired()])
     submit = SubmitField('Submit')
 
 
-class EditProfileForm(FlaskForm):
+class EditProfileForm(Form):
     name = StringField('Real name', validators=[Length(0, 64)])
     location = StringField('Location', validators=[Length(0, 64)])
     about_me = TextAreaField('About me')
@@ -18,7 +18,7 @@ class EditProfileForm(FlaskForm):
 
 
 # 管理员编辑个人资料
-class EditProfileAdminForm(FlaskForm):
+class EditProfileAdminForm(Form):
     email = StringField('Email', validators=[DataRequired(), Length(1, 64), Email()])
     username = StringField('Username', validators=[DataRequired(), Length(1, 64),
                                                   Regexp('^[A-Za-z][A-Za-z0-9_.]*$', 0,
@@ -49,12 +49,12 @@ class EditProfileAdminForm(FlaskForm):
             raise ValidationError('Username already in use.')
 
 
-class PostForm(FlaskForm):
+class PostForm(Form):
     # PageDownField Markdown 富文本编辑器
     body = PageDownField("What's on your mind?", validators=[DataRequired()])
     submit = SubmitField('Submit')
 
 
-class CommentForm(FlaskForm):
+class CommentForm(Form):
     body = StringField('Enter your comment', validators=[DataRequired()])
     submit = SubmitField('Submit')

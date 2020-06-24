@@ -15,7 +15,7 @@ Mako==1.0.7
 Markdown==2.6.11
 MarkupSafe==1.0
 SQLAlchemy>=1.3.0
-Werkzeug==0.14.1
+werkzeug>=0.15.3
 WTForms==2.1
 ForgeryPy==0.1
 Flask-httpauth==3.2.3
